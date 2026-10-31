@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#1a1e2e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="评论生成">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>店铺评论生成小工具</title>
+<style>
+  :root{
+    --bg:#0f1220; --card:#1a1f35; --card2:#222844; --line:#2e3557;
+    --text:#e8eaf6; --sub:#9aa3c7; --acc:#5b8cff; --acc2:#7c5bff;
+    --ok:#2ecc71; --warn:#f39c12; --err:#ff5c7a;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    background:radial-gradient(1200px 600px at 80% -10%, #232a52 0%, var(--bg) 55%);
+    color:var(--text); font-family:"Microsoft YaHei","PingFang SC",sans-serif;
+    min-height:100vh; display:flex; justify-content:center; padding:36px 16px 60px;
+  }
+  .wrap{width:100%; max-width:860px}
+  header{display:flex;align-items:center;gap:12px;margin-bottom:22px}
+  .logo{
+    width:44px;height:44px;border-radius:12px;flex:none;
+    background:linear-gradient(135deg,var(--acc),var(--acc2));
+    display:flex;align-items:center;justify-content:center;font-size:22px;
+    box-shadow:0 6px 18px rgba(91,140,255,.35);
+  }
+  h1{font-size:21px;font-weight:700}
+  header p{font-size:12.5px;color:var(--sub);margin-top:3px}
+  .card{
+    background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:20px; margin-bottom:16px;
+  }
+  .card h2{font-size:14px;color:var(--sub);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+  .card h2::before{content:"";width:3px;height:13px;background:var(--acc);border-radius:2px}
+  /* 上传区 */
+  .drop{
+    border:2px dashed #3a4272; border-radius:12px; padding:34px 20px; text-align:center;
+    cursor:pointer; transition:.2s; background:rgba(255,255,255,.02);
+  }
+  .drop:hover,.drop.drag{border-color:var(--acc); background:rgba(91,140,255,.08)}
+  .drop .big{font-size:34px;margin-bottom:8px}
+  .drop .t1{font-size:15px;font-weight:600}
+  .drop .t2{font-size:12.5px;color:var(--sub);margin-top:6px;line-height:1.7}
+  .drop .t2 b{color:var(--acc)}
+  .drop.hasimg{padding:14px; display:flex; gap:16px; text-align:left; align-items:flex-start; border-style:solid}
+  .preview{max-width:220px;max-height:260px;border-radius:10px;border:1px solid var(--line);object-fit:contain;background:#0a0d1a}
+  .pinfo{flex:1;min-width:0}
+  .pinfo .name{font-size:14px;font-weight:600;word-break:break-all;margin-bottom:4px}
+  .pinfo .meta{font-size:12px;color:var(--sub);margin-bottom:10px}
+  .btn2{
+    background:transparent;border:1px solid var(--line);color:var(--sub);
+    padding:6px 14px;border-radius:8px;font-size:12.5px;cursor:pointer;transition:.2s;
+  }
+  .btn2:hover{border-color:var(--err);color:var(--err)}
+  /* 选项网格 */
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .grid3{grid-template-columns:repeat(3,1fr)}
+  .opt{
+    background:var(--card2); border:1px solid var(--line); border-radius:10px;
+    padding:11px 10px; cursor:pointer; transition:.18s; text-align:center;
+  }
+  .opt .n{font-size:13.5px;font-weight:600}
+  .opt .d{font-size:11px;color:var(--sub);margin-top:3px;line-height:1.5}
+  .opt:hover{border-color:#4a5491}
+  .opt.sel{border-color:var(--acc);background:rgba(91,140,255,.14);box-shadow:0 0 0 1px var(--acc) inset}
+  .opt.sel .n{color:var(--acc)}
+  /* 生成按钮 */
+  .gen{
+    width:100%;padding:14px;border:none;border-radius:12px;cursor:pointer;font-size:16px;font-weight:700;
+    background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff;
+    box-shadow:0 8px 24px rgba(91,140,255,.35); transition:.2s; font-family:inherit;
+  }
+  .gen:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(91,140,255,.45)}
+  .gen:disabled{opacity:.55;cursor:not-allowed;transform:none}
+  /* 结果区 */
+  .result{display:none}
+  .result.show{display:block}
+  .statusbar{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--sub);margin-bottom:10px}
+  .spin{
+    width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--acc);
+    border-radius:50%;animation:rt 0.8s linear infinite;
+  }
+  @keyframes rt{to{transform:rotate(360deg)}}
+  .facts{
+    background:#141933;border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;font-size:12.5px;color:var(--sub);line-height:1.8;
+    white-space:pre-wrap;margin-bottom:12px;max-height:190px;overflow:auto;
+  }
+  .facts b{color:var(--text)}
+  .comment{
+    background:linear-gradient(135deg,rgba(91,140,255,.08),rgba(124,91,255,.08));
+    border:1px solid #3a4272;border-radius:12px;padding:16px 18px;
+    font-size:15px;line-height:1.9;white-space:pre-wrap;color:var(--text);
+  }
+  .cbtns{display:flex;gap:10px;margin-top:14px}
+  .btn3{
+    flex:1;padding:10px;border:none;border-radius:10px;font-size:14px;font-weight:600;
+    cursor:pointer;transition:.2s;font-family:inherit;
+  }
+  .copy{background:var(--ok);color:#06270f}
+  .copy:hover{filter:brightness(1.1)}
+  .again{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+  .again:hover{border-color:var(--acc);color:var(--acc)}
+  .errmsg{
+    display:none;background:rgba(255,92,122,.1);border:1px solid rgba(255,92,122,.4);
+    color:var(--err);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-bottom:12px;line-height:1.7;
+  }
+  .errmsg.show{display:block}
+  footer{text-align:center;font-size:11.5px;color:#5a6288;margin-top:18px;line-height:1.8}
+  /* 配置面板 */
+  .config-overlay{
+    display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+    background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center;
+  }
+  .config-overlay.show{display:flex}
+  .config-box{
+    background:var(--card);border:1px solid var(--line);border-radius:16px;
+    padding:24px;width:92%;max-width:520px;max-height:90vh;overflow:auto;
+  }
+  .config-box h3{font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .config-box h3::before{content:"";width:3px;height:14px;background:var(--acc);border-radius:2px}
+  .cfg-row{margin-bottom:14px}
+  .cfg-row label{display:block;font-size:12.5px;color:var(--sub);margin-bottom:6px}
+  .cfg-row input,.cfg-row select{
+    width:100%;background:var(--card2);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;color:var(--text);font-size:14px;font-family:inherit;
+  }
+  .cfg-row input:focus,.cfg-row select:focus{outline:none;border-color:var(--acc)}
+  .cfg-btns{display:flex;gap:10px;margin-top:20px}
+  .cfg-btns button{flex:1;padding:12px;border:none;border-radius:10px;cursor:pointer;font-size:14px;font-weight:600;font-family:inherit}
+  .cfg-save{background:var(--ok);color:#06270f}
+  .cfg-cancel{background:var(--card2);color:var(--text);border:1px solid var(--line)}
+  .cfg-hint{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.6}
+  .cfg-status{font-size:12px;margin-top:10px;padding:8px 10px;border-radius:8px;display:none}
+  .cfg-status.ok{background:rgba(46,204,113,.15);color:var(--ok)}
+  .cfg-status.err{background:rgba(255,92,122,.15);color:var(--err)}
+  .topbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+  .topbar button{background:var(--card2);border:1px solid var(--line);color:var(--sub);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer}
+  .topbar button:hover{border-color:var(--acc);color:var(--acc)}
+  @media(max-width:640px){
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .grid3{grid-template-columns:repeat(3,1fr)}
+    body{padding:18px 10px 40px}
+    .card{padding:16px}
+    h1{font-size:18px}
+    header p{font-size:11px}
+    .drop{padding:40px 16px}
+    .drop.hasimg{flex-direction:column;align-items:center}
+    .preview{max-width:100%;width:100%;max-height:320px}
+    .pinfo{width:100%}
+    .gen{padding:16px;font-size:17px}
+    .opt{padding:14px 10px}
+    .opt .n{font-size:14px}
+    .opt .d{font-size:12px}
+    .btn3{padding:14px;font-size:15px}
+    .comment{font-size:16px;padding:18px}
+    .facts{font-size:14px}
+    footer{font-size:10.5px}
+    .config-box{padding:18px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">📝</div>
+    <div>
+      <h1>店铺评论生成小工具</h1>
+      <p>上传店铺截图，AI 结合截图实际情况帮你写一条真实感评论</p>
+    </div>
+  </header>
+
+  <div class="topbar">
+    <button id="cfgBtn">⚙️ API 配置</button>
+  </div>
+
+  <div class="card">
+    <h2>1. 上传店铺截图</h2>
+    <div class="drop" id="drop">
+      <div class="big" id="dropBig">🖼️</div>
+      <div class="t1" id="dropT1">点击选择，或直接粘贴 / 拖入截图</div>
+      <div class="t2" id="dropT2">支持 PNG / JPG / WEBP，≤ 10MB<br>可截取点评、美团、饿了么等店铺页面<br>截图信息越完整，评论越贴合实际 <b>(点此重新选择)</b></div>
+      <img id="preview" class="preview" style="display:none" alt="preview">
+      <div class="pinfo" style="display:none" id="pinfo">
+        <div class="name" id="fname"></div>
+        <div class="meta" id="fmeta"></div>
+        <button class="btn2" id="changeBtn">换一张</button>
+      </div>
+      <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,image/bmp" hidden>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2. 选择评论风格</h2>
+    <div class="grid" id="styleGrid">
+      <div class="opt sel" data-val="objective"><div class="n">客观真实风</div><div class="d">有褒有贬，可信度高</div></div>
+      <div class="opt" data-val="enthusiastic"><div class="n">热情种草风</div><div class="d">突出亮点，推荐感强</div></div>
+      <div class="opt" data-val="simple"><div class="n">简洁直给风</div><div class="d">两三句点到为止</div></div>
+      <div class="opt" data-val="detailed"><div class="n">细节点评风</div><div class="d">多维逐项点评</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. 选择评论长度</h2>
+    <div class="grid grid3" id="lenGrid">
+      <div class="opt" data-val="short"><div class="n">短评</div><div class="d">40~80 字</div></div>
+      <div class="opt sel" data-val="medium"><div class="n">中评</div><div class="d">100~160 字</div></div>
+      <div class="opt" data-val="long"><div class="n">长评</div><div class="d">200~300 字</div></div>
+    </div>
+  </div>
+
+  <button class="gen" id="genBtn">✨ 生成评论</button>
+
+  <div class="card" style="margin-top:16px">
+    <div class="errmsg" id="errmsg"></div>
+    <div class="result" id="result">
+      <div class="statusbar" id="statusbar">
+        <div class="spin"></div><span>正在识别截图 → 撰写评论 → 事实校验+去AI化润色，请稍候（约 15~30 秒）…</span>
+      </div>
+      <div class="facts" id="facts" style="display:none"></div>
+      <div class="comment" id="comment" style="display:none"></div>
+      <div class="cbtns">
+        <button class="btn3 copy" id="copyBtn">📋 复制评论</button>
+        <button class="btn3 again" id="againBtn">🔄 换一版</button>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    纯前端运行 · 截图仅经 API 处理，不保存到任何服务器<br>
+    API Key 仅保存在本机浏览器 localStorage<br>
+    评论内容由 AI 生成，请酌情修改后再发布
+  </footer>
+</div>
+
+<!-- 配置面板 -->
+<div class="config-overlay" id="cfgOverlay">
+  <div class="config-box">
+    <h3>API 接入配置</h3>
+    <div class="cfg-row">
+      <label>接入平台</label>
+      <select id="cfgProvider">
+        <option value="qianfan">千帆百度智能云</option>
+        <option value="zhipu">智谱 AI (Zhipu)</option>
+        <option value="openai">OpenAI 兼容接口</option>
+      </select>
+    </div>
+<div class="cfg-row">
+      <label>API Base URL</label>
+      <input type="text" id="cfgBaseUrl" value="https://qianfan.baidubce.com/v2">
+      <div class="cfg-hint">根地址，不要带 /chat/completions。千帆：https://qianfan.baidubce.com/v2</div>
+    </div>
+    <div class="cfg-row">
+      <label>API Key / Access Token</label>
+      <input type="password" id="cfgApiKey" placeholder="sk-xxxxxxxx 或您的 Bearer Token">
+      <div class="cfg-hint">千帆：登录 https://console.bce.baidu.com/qianfan/ → 创建应用 → 获取 API Key</div>
+    </div>
+    <div class="cfg-row">
+      <label>视觉模型 ID（识别截图）</label>
+      <input type="text" id="cfgVlModel" value="qwen3.5-122b-a10b" placeholder="支持图片输入的模型 ID">
+    </div>
+    <div class="cfg-row">
+      <label>文本模型 ID（生成评论）</label>
+      <input type="text" id="cfgTextModel" value="qwen3.5-397b-a17b" placeholder="文本对话模型 ID">
+    </div>
+    <div class="cfg-status" id="cfgStatus"></div>
+    <div class="cfg-btns">
+      <button class="cfg-save" id="cfgSaveBtn">💾 保存配置</button>
+      <button class="cfg-cancel" id="cfgCancelBtn">取消</button>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="cfg-save" id="diagBtn" style="background:rgba(255,255,255,.05);border-color:#3a4272;font-size:12px;padding:6px 14px;">🧪 网络诊断</button>
+      <button class="cfg-save" id="modelBtn" style="background:rgba(255,255,255,.05);border-color:#3a4272;font-size:12px;padding:6px 14px;">📋 拉取可用模型</button>
+    </div>
+    <pre id="diagResult" style="display:none;margin-top:8px;padding:10px;background:#0c0f1c;border-radius:6px;font-size:11px;color:#9aa3c7;white-space:pre-wrap;word-break:break-all;max-height:200px;overflow:auto;"></pre>
+    <div class="cfg-hint" style="margin-top:12px">
+      配置信息保存在浏览器 localStorage，仅本机可用。<br>
+      首次使用需配置一次，后续自动读取。
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // ========== 配置管理 ==========
+var DEFAULTS = {
+    provider: 'qianfan',
+    baseUrl: 'https://qianfan.baidubce.com/v2',
+    apiKey: '',
+    vlModel: 'qwen3.5-122b-a10b',
+    textModel: 'qwen3.5-397b-a17b'
+  };
+
+  // 已下线/无权限的历史模型 ID -> 现可用模型。老用户浏览器里存着旧 ID 时会自动迁移，
+  // 否则改了默认值也会被 localStorage 里的旧值覆盖，导致继续报 invalid_model。
+  var MODEL_MIGRATION = {
+    'ernie-4.5-turbo-vl': 'qwen3.5-122b-a10b',
+    'ernie-4.5-turbo-128k': 'qwen3.5-397b-a17b',
+    'ernie-4.5-turbo': 'qwen3.5-397b-a17b',
+    'ernie-4.0-turbo-8k': 'qwen3.5-397b-a17b',
+    'ernie-speed-128k': 'qwen3.5-397b-a17b',
+    'glm-5.2': 'qwen3.5-397b-a17b',
+    'glm-5.2-fast': 'qwen3.5-397b-a17b'
+  };
+
+  function loadConfig(){
+    var cfg = {};
+    try{
+      var raw = localStorage.getItem('storeReviewCfg');
+      if(raw) cfg = JSON.parse(raw);
+    }catch(e){}
+    var out = Object.assign({}, DEFAULTS, cfg);
+    var changed = false;
+    if(out.vlModel && MODEL_MIGRATION[out.vlModel]){ out.vlModel = MODEL_MIGRATION[out.vlModel]; changed = true; }
+    if(out.textModel && MODEL_MIGRATION[out.textModel]){ out.textModel = MODEL_MIGRATION[out.textModel]; changed = true; }
+    if(changed){ try{ localStorage.setItem('storeReviewCfg', JSON.stringify(out)); }catch(e){} }
+    return out;
+  }
+
+  function saveConfig(cfg){
+    localStorage.setItem('storeReviewCfg', JSON.stringify(cfg));
+  }
+
+  var config = loadConfig();
+
+  // ========== 配置面板 ==========
+  var cfgOverlay = document.getElementById('cfgOverlay'),
+      cfgBtn = document.getElementById('cfgBtn'),
+      cfgSaveBtn = document.getElementById('cfgSaveBtn'),
+      cfgCancelBtn = document.getElementById('cfgCancelBtn'),
+      cfgProvider = document.getElementById('cfgProvider'),
+      cfgBaseUrl = document.getElementById('cfgBaseUrl'),
+      cfgApiKey = document.getElementById('cfgApiKey'),
+      cfgVlModel = document.getElementById('cfgVlModel'),
+      cfgTextModel = document.getElementById('cfgTextModel'),
+      cfgStatus = document.getElementById('cfgStatus');
+
+  function openCfg(){
+    var c = loadConfig();
+    cfgProvider.value = c.provider || 'qianfan';
+    cfgBaseUrl.value = c.baseUrl || DEFAULTS.baseUrl;
+    cfgApiKey.value = c.apiKey || '';
+    cfgVlModel.value = c.vlModel || DEFAULTS.vlModel;
+    cfgTextModel.value = c.textModel || DEFAULTS.textModel;
+    cfgStatus.style.display = 'none';
+    cfgStatus.className = 'cfg-status';
+    cfgOverlay.classList.add('show');
+  }
+  function closeCfg(){ cfgOverlay.classList.remove('show'); }
+
+  cfgBtn.addEventListener('click', openCfg);
+  cfgCancelBtn.addEventListener('click', closeCfg);
+  cfgOverlay.addEventListener('click', function(e){ if(e.target===cfgOverlay) closeCfg(); });
+
+  cfgProvider.addEventListener('change', function(){
+    var p = cfgProvider.value;
+if(p==='qianfan'){
+      cfgBaseUrl.value = 'https://qianfan.baidubce.com/v2';
+      cfgVlModel.value = 'qwen3.5-122b-a10b';
+      cfgTextModel.value = 'qwen3.5-397b-a17b';
+    } else if(p==='zhipu'){
+      cfgBaseUrl.value = 'https://open.bigmodel.cn/api/paas/v4';
+      cfgVlModel.value = 'glm-4.5v';
+      cfgTextModel.value = 'glm-5.2';
+    } else if(p==='openai'){
+      cfgBaseUrl.value = 'https://api.openai.com/v1';
+      cfgVlModel.value = 'gpt-4o';
+      cfgTextModel.value = 'gpt-4o';
+    }
+  });
+
+  cfgSaveBtn.addEventListener('click', function(){
+    var newCfg = {
+      provider: cfgProvider.value,
+      baseUrl: (cfgBaseUrl.value||'').trim().replace(/\/$/,''),
+      apiKey: (cfgApiKey.value||'').trim(),
+      vlModel: (cfgVlModel.value||'').trim(),
+      textModel: (cfgTextModel.value||'').trim()
+    };
+    if(!newCfg.apiKey){
+      cfgStatus.textContent = '请输入 API Key';
+      cfgStatus.className = 'cfg-status err show';
+      return;
+    }
+    saveConfig(newCfg);
+    config = newCfg;
+    cfgStatus.textContent = '配置已保存';
+    cfgStatus.className = 'cfg-status ok show';
+    // 保存后显示诊断按钮
+    document.getElementById('diagBtn').style.display = '';
+    setTimeout(closeCfg, 600);
+  });
+
+  // 网络诊断按钮
+  var diagBtn = document.getElementById('diagBtn');
+  var diagResult = document.getElementById('diagResult');
+
+  // 拉取该 Key 实际可用的模型列表（直接读当前输入框，无需先保存）
+  var modelBtn = document.getElementById('modelBtn');
+  if(modelBtn){
+    modelBtn.addEventListener('click', function(){
+      diagResult.style.display = '';
+      var base = (cfgBaseUrl.value || '').trim().replace(/\/$/,'');
+      var key = (cfgApiKey.value || '').trim();
+      if(!key){ diagResult.textContent = '请先在上方填写 API Key'; return; }
+      diagResult.textContent = '正在拉取 ' + base + '/models ...\n';
+      fetch(base + '/models', {headers: {'Authorization': 'Bearer ' + key}})
+        .then(function(r){ return r.text().then(function(t){ return {s:r.status, t:t}; }); })
+        .then(function(o){
+          if(o.s !== 200){
+            diagResult.textContent = 'HTTP ' + o.s + '\n' + o.t.slice(0, 400);
+            return;
+          }
+          var list = [];
+          try{
+            var d = JSON.parse(o.t);
+            (d.data || []).forEach(function(m){
+              var a = m.architecture || {};
+              var inp = (a.input_modalities || []).join('+');
+              list.push('· ' + m.id + '   [' + (m.type||'') + '/' + inp + ']');
+            });
+          }catch(e){ diagResult.textContent = '解析失败：' + e.message + '\n' + o.t.slice(0,400); return; }
+          diagResult.textContent =
+            '✅ 该 Key 可访问 ' + list.length + ' 个模型：\n\n' + list.join('\n') +
+            '\n\n用法：含 image 的模型填「视觉模型」，纯 text 的填「文本模型」；把 ID 复制到上方对应输入框即可。';
+        })
+        .catch(function(e){ diagResult.textContent = '请求失败：' + e.message + '\n（若为 Failed to fetch，属跨域或网络问题）'; });
+    });
+  }
+
+  if(diagBtn){
+    diagBtn.addEventListener('click', function(){
+      diagResult.style.display = '';
+      diagResult.textContent = '正在测试网络连通性...\n';
+      var saved = loadConfig();
+      var cfg = {
+        baseUrl: (cfgBaseUrl.value || saved.baseUrl || '').trim().replace(/\/$/,''),
+        apiKey: (cfgApiKey.value || saved.apiKey || '').trim(),
+        textModel: (cfgTextModel.value || saved.textModel || 'qwen3.5-397b-a17b').trim()
+      };
+      var url = cfg.baseUrl + '/chat/completions';
+      var testPayload = JSON.stringify({model: cfg.textModel, messages: [{role:'user',content:'hi'}], max_tokens: 5});
+      
+      // 输出环境信息
+      diagResult.textContent += '页面协议: ' + location.protocol + '\n';
+      diagResult.textContent += '页面主机: ' + location.host + '\n';
+      diagResult.textContent += 'API 地址: ' + url + '\n';
+      diagResult.textContent += 'API Key 长度: ' + (cfg.apiKey || '').length + '\n';
+      diagResult.textContent += '---\n';
+
+      // 测试1: fetch
+      if(typeof fetch !== 'undefined'){
+        diagResult.textContent += '测试 fetch...\n';
+        fetch(url, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json','Authorization':'Bearer '+(cfg.apiKey||'')},
+          body: testPayload,
+          mode: 'cors'
+        }).then(function(r){
+          return r.text().then(function(t){ return {status:r.status, text:t}; });
+        }).then(function(o){
+          diagResult.textContent += 'fetch 结果: HTTP ' + o.status + ' | ' + o.text.slice(0,200) + '\n';
+        }).catch(function(e){
+          diagResult.textContent += 'fetch 失败: ' + e.name + ' - ' + e.message + '\n';
+        }).finally(function(){
+          // 测试2: XHR
+          diagResult.textContent += '测试 XHR...\n';
+          var xhr = new XMLHttpRequest();
+          xhr.open('POST', url, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.setRequestHeader('Authorization', 'Bearer ' + (cfg.apiKey || ''));
+          xhr.onreadystatechange = function(){
+            if(xhr.readyState === 4){
+              diagResult.textContent += 'XHR 结果: HTTP ' + xhr.status + ' statusText=' + xhr.statusText + '\n';
+              diagResult.textContent += 'XHR body: ' + xhr.responseText.slice(0,300) + '\n';
+            }
+          };
+          xhr.onerror = function(){
+            diagResult.textContent += 'XHR onerror fired (status=0, likely CORS or mixed-content block)\n';
+          };
+          xhr.send(testPayload);
+        });
+      } else {
+        diagResult.textContent += 'fetch 不可用，直接测试 XHR...\n';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + (cfg.apiKey || ''));
+        xhr.onreadystatechange = function(){
+          if(xhr.readyState === 4){
+            diagResult.textContent += 'XHR 结果: HTTP ' + xhr.status + ' statusText=' + xhr.statusText + '\n';
+            diagResult.textContent += 'XHR body: ' + xhr.responseText.slice(0,300) + '\n';
+          }
+        };
+        xhr.onerror = function(){
+          diagResult.textContent += 'XHR onerror fired (status=0, likely CORS or mixed-content block)\n';
+        };
+        xhr.send(testPayload);
+      }
+    });
+  }
+
+  // ========== API 调用 ==========
+  var NET_DIAG = '';
+  function diag(msg){
+    var ts = new Date().toLocaleTimeString();
+    NET_DIAG += ts + ' ' + msg + '\n';
+    console.log('[API]', msg);
+  }
+
+  // 把接口返回的错误翻译成人能看懂的提示
+  function friendlyApiError(status, bodyText, model){
+    var code = '', msg = '';
+    try{
+      var o = JSON.parse(bodyText);
+      code = (o.error && o.error.code) || '';
+      msg = (o.error && o.error.message) || '';
+    }catch(e){ msg = (bodyText || '').slice(0, 200); }
+    if(code === 'invalid_model' || (status === 401 && /model/i.test(msg))){
+      return '模型不可用：当前模型 ID「' + model + '」在这个账号下没有权限或已下线。\n'
+           + '解决办法：点右上角 ⚙️ API 配置 → 点「📋 拉取可用模型」看该 Key 实际能用的模型 ID，填到对应输入框后保存。';
+    }
+    if(status === 401 || code === 'invalid_iam_token'){
+      return '认证失败（HTTP 401）：API Key 无效或已过期，请在 ⚙️ API 配置 里重新填写。';
+    }
+    if(status === 429){
+      return '请求过于频繁（HTTP 429）：模型限流，稍等几秒再试。';
+    }
+    if(status === 400){
+      return '请求被拒绝（HTTP 400）：' + (msg || '参数或图片格式有问题') + '\n（图片过大时会触发，可换更小的截图）';
+    }
+    return 'API 错误 HTTP ' + status + (msg ? '：' + msg : '');
+  }
+
+  function callAPI(model, messages, maxTokens, timeout){
+    return new Promise(function(resolve, reject){
+      var cfg = loadConfig();
+      if(!cfg.apiKey){
+        openCfg();
+        reject(new Error('请先配置 API Key（点击右上角 ⚙️ API 配置）'));
+        return;
+      }
+      var url = cfg.baseUrl + '/chat/completions';
+      var payload = JSON.stringify({
+        model: model,
+        messages: messages,
+        max_tokens: maxTokens || 800,
+        temperature: 0.8
+      });
+      NET_DIAG = '';
+
+      // 优先用 fetch（移动端更稳定），失败回退到 XHR
+      if(typeof fetch !== 'undefined'){
+        diag('fetch POST ' + url);
+        var ac;
+        try{ ac = new AbortController(); }catch(e){}
+        var timer = null;
+        if(ac){
+          timer = setTimeout(function(){ ac.abort(); }, (timeout || 120) * 1000);
+        }
+        fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + cfg.apiKey
+          },
+          body: payload,
+          signal: ac ? ac.signal : undefined,
+          mode: 'cors'
+        }).then(function(resp){
+          if(timer) clearTimeout(timer);
+          diag('fetch response status=' + resp.status);
+          if(resp.ok){
+            return resp.json();
+          } else {
+            return resp.text().then(function(text){
+              throw new Error(friendlyApiError(resp.status, text, model));
+            });
+          }
+        }).then(function(data){
+          var content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+          if(!content || !content.trim()){
+            reject(new Error('AI 未返回正文内容（可能被模型的推理过程占满了输出长度）。请重试，或到 ⚙️ API 配置 换一个模型。'));
+          } else {
+            resolve(content);
+          }
+        }).catch(function(err){
+          if(timer) clearTimeout(timer);
+          diag('fetch error: ' + err.name + ' - ' + err.message);
+          // 如果是 TypeError/AbortError，可能是CORS/网络问题，回退XHR
+          if(err.name === 'TypeError' || err.name === 'AbortError'){
+            diag('回退到 XHR');
+            fallbackXHR();
+          } else {
+            reject(err);
+          }
+        });
+      } else {
+        fallbackXHR();
+      }
+
+      function fallbackXHR(){
+        diag('XHR POST ' + url);
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', url, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.setRequestHeader('Authorization', 'Bearer ' + cfg.apiKey);
+        xhr.timeout = (timeout || 120) * 1000;
+        xhr.onreadystatechange = function(){
+          if(xhr.readyState !== 4) return;
+          diag('XHR readyState=4 status=' + xhr.status);
+          if(xhr.status >= 200 && xhr.status < 300){
+            try{
+              var data = JSON.parse(xhr.responseText);
+              var content = (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+              if(!content || !content.trim()){
+                reject(new Error('AI 未返回正文内容（可能被模型的推理过程占满了输出长度）。请重试，或到 ⚙️ API 配置 换一个模型。'));
+              } else {
+                resolve(content);
+              }
+            }catch(e){
+              diag('XHR JSON parse error: ' + e.message);
+              reject(new Error('接口返回解析失败'));
+            }
+          } else {
+            diag('XHR error body: ' + xhr.responseText.slice(0, 200));
+            reject(new Error(friendlyApiError(xhr.status, xhr.responseText, model)));
+          }
+        };
+        xhr.onerror = function(ev){
+          diag('XHR onerror triggered. Status=' + xhr.status + ', statusText=' + xhr.statusText);
+          // 增强诊断：HTTP 0 通常是 CORS 被拦截
+          if(xhr.status === 0){
+            var protocol = url.split(':')[0];
+            var pageProtocol = location.protocol.replace(':','');
+            if(pageProtocol === 'http' && protocol === 'https'){
+              reject(new Error('HTTP 0：混合内容被拦截。当前页面是 http，API 是 https，浏览器可能阻止了请求。请尝试通过 https 部署此页面，或使用手机浏览器直接访问官方部署地址。'));
+            } else if(pageProtocol === 'https' && protocol === 'http'){
+              reject(new Error('HTTP 0：混合内容被拦截。当前页面是 https，API 是 http，浏览器阻止了不安全请求。'));
+            } else {
+              reject(new Error('HTTP 0：请求被浏览器拦截，通常是 CORS 策略阻止了跨域请求，或网络连接失败。诊断日志：\n' + NET_DIAG));
+            }
+          } else {
+            reject(new Error('网络请求失败 (XHR status=' + xhr.status + ')'));
+          }
+        };
+        xhr.ontimeout = function(){ reject(new Error('请求超时，请重试')); };
+        xhr.send(payload);
+      }
+    });
+  }
+
+  // ========== 图片处理 ==========
+  function resizeImage(file, maxWidth, maxHeight, quality, callback){
+    var reader = new FileReader();
+    reader.onload = function(e){
+      var img = new Image();
+      img.onload = function(){
+        var w = img.width, h = img.height;
+        if(w > maxWidth || h > maxHeight){
+          var ratio = Math.min(maxWidth/w, maxHeight/h);
+          w = Math.floor(w * ratio);
+          h = Math.floor(h * ratio);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        var dataUrl = canvas.toDataURL('image/jpeg', quality || 0.85);
+        callback(dataUrl);
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // ========== 核心逻辑 ==========
+  var STYLE_CONFIG = {
+    objective: {
+      label: "客观真实风",
+      desc: "像普通食客如实分享体验，有褒有贬、语气平和",
+      openings: ["从某道菜的真实口感切入","从性价比/人均切入","从环境氛围切入","从服务/排队切入","单纯记录今天吃了啥"],
+      tones: ["略带挑剔","平淡真实","有一说一","不吹不黑"],
+      taboos: "总的来说、综上所述、总结一下、综合评价、满分推荐、绝对不会踩雷、这家店真的、强烈安利"
+    },
+    enthusiastic: {
+      label: "热情种草风",
+      desc: "语气热情积极，突出亮点，适合想推荐的场景",
+      openings: ["从一道惊艳的菜品切入","从发现的隐藏惊喜切入","从聚会/约会场景切入","从跟别人安利的心情切入","从为什么值得专门去切入"],
+      tones: ["很兴奋","忍不住分享","真心推荐","如数家珍"],
+      taboos: "总体来说、综合评价、综上所述、AI、种草笔记的标准套路、必打卡、绝绝子、天花板、YYDS、冲就完了"
+    },
+    simple: {
+      label: "简洁直给风",
+      desc: "两三句话点到为止，朴实不啰嗦",
+      openings: ["一句话点评","只讲好不好吃","只讲值不值","简单说个结论","记一笔流水账"],
+      tones: ["极简","懒得啰嗦","一句话","简短真实"],
+      taboos: "总的来说、综上所述、总结一下、详细来说、首先、其次、最后、展开讲讲"
+    },
+    detailed: {
+      label: "细节点评风",
+      desc: "从口味、分量、环境、服务、性价比等维度逐项点评",
+      openings: ["从菜品逐个展开","从环境和服务展开","从排队到吃完的全过程","从点菜策略展开","从跟朋友聊天的视角展开"],
+      tones: ["像给熟人写攻略","认真记录","逐项念叨","碎碎念"],
+      taboos: "总的来说、综上所述、总结一下、综合评价、满分推荐、强烈推荐、绝对不会失望"
+    }
+  };
+  var LENGTH_DESC = {
+    short: "全篇控制在40-80字，简洁凝练",
+    medium: "全篇控制在100-160字，有细节有观点",
+    long: "全篇控制在200-300字，内容丰富"
+  };
+
+  function pickOne(arr){
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+
+  function analyzeScreenshot(b64){
+    var prompt = (
+      "你是一名细心的店铺信息提取助手。请仔细观察这张店铺截图，"
+      + "提取其中真实可见的信息，包括但不限于：店铺名称、店铺类型/品类、"
+      + "评分/星级、人均消费、地址/位置、营业时间、招牌菜或推荐菜品（含价格）、"
+      + "优惠活动、顾客评价摘录、排队/环境/服务等描述。\n"
+      + "要求：只能基于截图里真实看到的内容，看不到的不要编造；"
+      + "如果某项信息在截图里没有，就写\u201c未见\u201d。\n"
+      + "请以简洁的分点列表输出。"
+    );
+    var content = [
+      {type:"text", text: prompt},
+      {type:"image_url", image_url:{url:"data:image/jpeg;base64,"+b64}}
+    ];
+    var cfg = loadConfig();
+    return callAPI(cfg.vlModel || 'qwen3.5-122b-a10b', [{role:"user", content:content}], 1500, 180);
+  }
+
+  function generateComment(facts, style, length){
+    var cfg = loadConfig();
+    var sc = STYLE_CONFIG[style] || STYLE_CONFIG.objective;
+    var len = LENGTH_DESC[length] || LENGTH_DESC.medium;
+    var opening = pickOne(sc.openings);
+    var tone = pickOne(sc.tones);
+
+    var prompt = (
+      "你是一名真实用户，不是AI。你刚刚在截图里的店铺吃完，现在要随手写一条评论发到点评/美团等平台。\n"
+      + "以下是截图里识别到的店铺实际情况（唯一可信依据）：\n"
+      + "------\n"
+      + facts + "\n"
+      + "------\n"
+      + "请你按以下方式写：\n"
+      + "1. 风格：" + sc.label + "（" + sc.desc + "）\n"
+      + "2. 切入角度：" + opening + "\n"
+      + "3. 语气：" + tone + "\n"
+      + "4. 篇幅：" + len + "\n"
+      + "5. 只基于上面的识别信息写，识别结果为\u201c未见\u201d的信息不要编造。\n"
+      + "6. 不要出现以下模板化表达：" + sc.taboos + "\n"
+      + "7. 开头不要固定套路，每次换不同方式入题（如有时从菜切入，有时从价格切入，有时从环境切入）。\n"
+      + "8. 允许口语化小瑕疵，允许句子长短不一，允许省略主语，像真人随手打的。\n"
+      + "9. 不要加话题标签，不要用列表/标题/序号，用连贯段落。\n"
+      + "10. 不要出现\u201cAI\u201d\u201c模型\u201d等字样。\n"
+      + "请直接输出评论正文。"
+    );
+    return callAPI(cfg.textModel || 'qwen3.5-397b-a17b', [{role:"user", content:prompt}], 2500, 180);
+  }
+
+  // 合并校验+润色为一步，减少一次API调用
+  function verifyAndHumanize(facts, draft){
+    var prompt = (
+      "你是一名审稿人。下面是根据截图信息写的评论草稿，请你做两件事：\n"
+      + "一、事实校验：核对草稿中的事实点（店名、菜品、价格、优惠、评分等）是否都有截图依据；\n"
+      + "   若草稿编造了截图里\u201c未见\u201d的信息，必须删除或改写。\n"
+      + "二、去AI化润色：去掉排比三连、夸张形容词、总结式结尾、'首先/其次/最后'等模板结构，"
+      + "   改成像真人随手写的口语化表达；保留所有事实点。\n"
+      + "截图识别信息（唯一可信事实来源）：\n"
+      + "------\n"
+      + facts + "\n"
+      + "------\n"
+      + "评论草稿：\n"
+      + "------\n"
+      + draft + "\n"
+      + "------\n"
+      + "输出格式：第一行只写\u201cTRUE\u201d（无需改动，仅润色）或\u201cFALSE\u201d（已修正事实并润色）；\n"
+      + "从第二行开始输出最终评论正文。"
+    );
+    var cfg = loadConfig();
+    return callAPI(cfg.textModel || 'qwen3.5-397b-a17b', [{role:"user", content:prompt}], 2500, 180);
+  }
+
+  // ========== UI 交互（与原版本一致）==========
+  var drop=document.getElementById('drop'), fileInput=document.getElementById('fileInput'),
+      preview=document.getElementById('preview'), pinfo=document.getElementById('pinfo'),
+      fname=document.getElementById('fname'), fmeta=document.getElementById('fmeta'),
+      dropBig=document.getElementById('dropBig'), dropT1=document.getElementById('dropT1'),
+      dropT2=document.getElementById('dropT2'), changeBtn=document.getElementById('changeBtn');
+  var imageB64=null, fileName='';
+
+  function setImage(dataUrl, name, size){
+    imageB64 = dataUrl.split(',')[1];
+    fileName = name;
+    preview.src = dataUrl;
+    preview.style.display = 'block';
+    pinfo.style.display = 'block';
+    fname.textContent = name;
+    fmeta.textContent = (size/1024).toFixed(1)+' KB';
+    drop.classList.add('hasimg');
+    dropBig.style.display='none'; dropT1.style.display='none'; dropT2.style.display='none';
+    drop.style.padding='14px';
+  }
+  function resetDrop(){
+    imageB64=null; fileName='';
+    preview.style.display='none'; pinfo.style.display='none';
+    drop.classList.remove('hasimg');
+    dropBig.style.display=''; dropT1.style.display=''; dropT2.style.display='';
+    drop.style.padding='34px 20px';
+  }
+
+  drop.addEventListener('click', function(){ fileInput.click(); });
+  changeBtn.addEventListener('click', function(e){ e.stopPropagation(); fileInput.click(); });
+  fileInput.addEventListener('change', function(){
+    if(fileInput.files && fileInput.files[0]) handleFile(fileInput.files[0]);
+  });
+  ['dragover','dragenter'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('drag'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('drag'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]){
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  document.addEventListener('paste', function(e){
+    var items = (e.clipboardData||{}).items||[];
+    for(var i=0;i<items.length;i++){
+      if(items[i].type && items[i].type.indexOf('image')===0){
+        var f=items[i].getAsFile(); if(f){ handleFile(f); return; }
+      }
+    }
+  });
+
+  function handleFile(f){
+    var ext=(f.name.toLowerCase().match(/\.(\w+)$/)||[])[1];
+    if(!['png','jpg','jpeg','webp','bmp'].includes(ext)){
+      showErr('暂不支持该格式，请使用 PNG / JPG / WEBP 截图'); return;
+    }
+    if(f.size > 10*1024*1024){ showErr('图片超过 10MB，请压缩后再试'); return; }
+    // 压缩图片：限制最大 1200px，JPEG 0.85 质量
+    resizeImage(f, 1200, 1200, 0.85, function(dataUrl){
+      setImage(dataUrl, f.name, Math.round(dataUrl.length * 3 / 4));
+      hideErr();
+    });
+  }
+
+  /* 选项选择 */
+  var style='objective', length='medium';
+  ['styleGrid','lenGrid'].forEach(function(id){
+    document.getElementById(id).addEventListener('click', function(e){
+      var opt=e.target.closest('.opt'); if(!opt) return;
+      this.querySelectorAll('.opt').forEach(function(o){ o.classList.remove('sel'); });
+      opt.classList.add('sel');
+      if(id==='styleGrid') style=opt.dataset.val;
+      else length=opt.dataset.val;
+    });
+  });
+
+  /* 状态 */
+  var errmsg=document.getElementById('errmsg'), result=document.getElementById('result'),
+      statusbar=document.getElementById('statusbar'), factsEl=document.getElementById('facts'),
+      commentEl=document.getElementById('comment'),
+      copyBtn=document.getElementById('copyBtn'), againBtn=document.getElementById('againBtn'),
+      genBtn=document.getElementById('genBtn');
+  var busy=false;
+
+  function showErr(msg){ errmsg.textContent=msg; errmsg.classList.add('show'); }
+  function hideErr(){ errmsg.classList.remove('show'); }
+  function setBusy(b){
+    busy=b; genBtn.disabled=b;
+    genBtn.textContent=b?'⏳ 正在生成…':'✨ 生成评论';
+  }
+
+  function run(){
+    if(busy) return;
+    if(!imageB64){ showErr('请先上传店铺截图'); return; }
+    var cfg = loadConfig();
+    if(!cfg.apiKey){ openCfg(); return; }
+    hideErr();
+    result.classList.add('show');
+    statusbar.style.display='flex';
+    factsEl.style.display='none'; commentEl.style.display='none';
+    setBusy(true);
+
+    // 流程：识别 → 草稿 → (校验+润色合并)
+    analyzeScreenshot(imageB64)
+      .then(function(facts){
+        factsEl.textContent = '【识别到的店铺信息】\n' + facts;
+        factsEl.style.display = 'block';
+        return generateComment(facts, style, length).then(function(draft){
+          return verifyAndHumanize(facts, draft).then(function(result){
+            var lines = result.split('\n').filter(function(l){ return l.trim(); });
+            var verdict = (lines[0] || '').toUpperCase();
+            var comment = verdict.indexOf('TRUE') === 0 ? draft : (lines.slice(1).join('\n').trim() || draft);
+            var verifyNote = verdict.indexOf('TRUE') === 0 ? '事实校验通过，已润色' : '已修正并润色';
+            setBusy(false);
+            statusbar.style.display='none';
+            factsEl.textContent = factsEl.textContent + '\n\n【' + verifyNote + '】';
+            commentEl.textContent = comment;
+            commentEl.style.display = 'block';
+          });
+        });
+      })
+      .catch(function(e){
+        setBusy(false);
+        statusbar.style.display='none';
+        showErr('生成失败：' + (e.message || e));
+      });
+  }
+
+  genBtn.addEventListener('click', run);
+  againBtn.addEventListener('click', run);
+
+  copyBtn.addEventListener('click', function(){
+    var text=commentEl.textContent;
+    if(!text) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){
+        copyBtn.textContent='✅ 已复制'; setTimeout(function(){copyBtn.textContent='📋 复制评论';},1600);
+      }).catch(function(){ fallbackCopy(text); });
+    } else { fallbackCopy(text); }
+  });
+  function fallbackCopy(text){
+    var ta=document.createElement('textarea'); ta.value=text;
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); copyBtn.textContent='✅ 已复制'; }
+    catch(e){ showErr('复制失败，请手动全选复制'); }
+    document.body.removeChild(ta);
+    setTimeout(function(){copyBtn.textContent='📋 复制评论';},1600);
+  }
+
+  /* PWA: 安装到手机桌面 */
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){ /* 静默，不影响主功能 */ });
+    });
+  }
+})();
+</script>
+</body>
+</html>
