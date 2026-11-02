@@ -532,8 +532,20 @@ if(p==='qianfan'){
     if(status === 429){
       return '请求过于频繁（HTTP 429）：模型限流，稍等几秒再试。';
     }
-    if(status === 400){
+if(status === 400){
       return '请求被拒绝（HTTP 400）：' + (msg || '参数或图片格式有问题') + '\n（图片过大时会触发，可换更小的截图）';
+    }
+    if(code === 'account_overdue' || /overdue account/i.test(msg)){
+      return '账号欠费（HTTP 403 / account_overdue）：你的百度千帆（百度智能云）账号已欠费或余额不足，接口被停用。\n'
+           + '这不是页面或 API Key 的问题——同一个 Key 换任何模型都会返回同样的 403。\n'
+           + '解决办法：登录百度智能云控制台 → 费用中心 → 查看是否有欠费或未支付账单并完成充值/缴费，到账后一般几分钟内自动恢复。';
+    }
+    if(status === 403){
+      return '访问被拒绝（HTTP 403）：' + (msg || '该账号无权访问此模型，或触发风控') + '\n'
+           + '可点右上角 ⚙️ API 配置 → 「📋 拉取可用模型」确认这个 Key 实际能用的模型；若提示欠费，需先去百度智能云完成缴费。';
+    }
+    if(status >= 500){
+      return '服务端异常（HTTP ' + status + '）：' + (msg || '千帆服务暂时不可用') + '\n稍等一会儿再试，或换一个模型。';
     }
     return 'API 错误 HTTP ' + status + (msg ? '：' + msg : '');
   }
