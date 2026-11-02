@@ -245,29 +245,32 @@
     <h3>API 接入配置</h3>
     <div class="cfg-row">
       <label>接入平台</label>
-      <select id="cfgProvider">
-        <option value="qianfan">千帆百度智能云</option>
-        <option value="zhipu">智谱 AI (Zhipu)</option>
+<select id="cfgProvider">
+        <option value="zhipu">智谱 Z.ai（免费档，推荐）</option>
+        <option value="qianfan">千帆百度智能云（按量计费）</option>
         <option value="openai">OpenAI 兼容接口</option>
       </select>
+      <div class="cfg-hint" id="cfgCostHint"></div>
     </div>
 <div class="cfg-row">
       <label>API Base URL</label>
-      <input type="text" id="cfgBaseUrl" value="https://qianfan.baidubce.com/v2">
-      <div class="cfg-hint">根地址，不要带 /chat/completions。千帆：https://qianfan.baidubce.com/v2</div>
+      <input type="text" id="cfgBaseUrl" value="https://api.z.ai/api/paas/v4">
+      <div class="cfg-hint">根地址，不要带 /chat/completions。免费档用智谱国际站 https://api.z.ai/api/paas/v4 —— 国内站 open.bigmodel.cn 不允许浏览器直连（会被跨域拦截），不要填它。</div>
     </div>
     <div class="cfg-row">
-      <label>API Key / Access Token</label>
-      <input type="password" id="cfgApiKey" placeholder="sk-xxxxxxxx 或您的 Bearer Token">
-      <div class="cfg-hint">千帆：登录 https://console.bce.baidu.com/qianfan/ → 创建应用 → 获取 API Key</div>
+      <label>API Key</label>
+      <input type="password" id="cfgApiKey" placeholder="Z.ai API Key">
+      <div class="cfg-hint">免费获取：https://z.ai 注册登录 → API Keys → 新建（glm-4.6v-flash / glm-4.7-flash 在官方价格页标注为 Free）。注意：国内站 bigmodel.cn 的 Key 与国际站不通用。</div>
     </div>
     <div class="cfg-row">
       <label>视觉模型 ID（识别截图）</label>
-      <input type="text" id="cfgVlModel" value="qwen3.5-122b-a10b" placeholder="支持图片输入的模型 ID">
+      <input type="text" id="cfgVlModel" value="glm-4.6v-flash" placeholder="支持图片输入的模型 ID">
+      <div class="cfg-hint">默认 glm-4.6v-flash —— 智谱官方标注「免费模型，支持视觉推理」。</div>
     </div>
     <div class="cfg-row">
       <label>文本模型 ID（生成评论）</label>
-      <input type="text" id="cfgTextModel" value="qwen3.5-397b-a17b" placeholder="文本对话模型 ID">
+      <input type="text" id="cfgTextModel" value="glm-4.7-flash" placeholder="文本对话模型 ID">
+      <div class="cfg-hint">默认 glm-4.7-flash —— 智谱官方标注「免费文本模型」，输入/输出/缓存全免。</div>
     </div>
     <div class="cfg-status" id="cfgStatus"></div>
     <div class="cfg-btns">
@@ -288,26 +291,51 @@
 
 <script>
 (function(){
-  // ========== 配置管理 ==========
-var DEFAULTS = {
-    provider: 'qianfan',
-    baseUrl: 'https://qianfan.baidubce.com/v2',
+// ========== 配置管理 ==========
+  // 默认走智谱「免费档」，官方依据（智谱价格页/模型文档）：
+  //   视觉 glm-4.6v-flash：官方标注「免费模型，支持视觉推理」
+// 文本 glm-4.7-flash：官方标注「免费文本模型」，输入/输出/缓存费用全部为免费
+  // 端点用智谱国际站 api.z.ai：国内站 open.bigmodel.cn 的预检响应不带 CORS 允许头，
+  // 浏览器直连会被拦截（已用真实浏览器实测为 Failed to fetch）；api.z.ai 实测可跨域调用。
+  var FREE_PROVIDER = 'zhipu';
+  var FREE_BASE_URL = 'https://api.z.ai/api/paas/v4';
+  var FREE_VL_MODEL = 'glm-4.6v-flash';
+  var FREE_TEXT_MODEL = 'glm-4.7-flash';
+
+  var DEFAULTS = {
+    provider: FREE_PROVIDER,
+    baseUrl: FREE_BASE_URL,
     apiKey: '',
-    vlModel: 'qwen3.5-122b-a10b',
-    textModel: 'qwen3.5-397b-a17b'
+    vlModel: FREE_VL_MODEL,
+    textModel: FREE_TEXT_MODEL
   };
 
-  // 已下线/无权限的历史模型 ID -> 现可用模型。老用户浏览器里存着旧 ID 时会自动迁移，
-  // 否则改了默认值也会被 localStorage 里的旧值覆盖，导致继续报 invalid_model。
+  // 历史（已下线 / 收费）模型 ID -> 免费可用模型。浏览器里存着旧 ID 时自动迁移，
+  // 否则改了默认值也会被 localStorage 里的旧值覆盖，导致继续报错或继续产生费用。
   var MODEL_MIGRATION = {
-    'ernie-4.5-turbo-vl': 'qwen3.5-122b-a10b',
-    'ernie-4.5-turbo-128k': 'qwen3.5-397b-a17b',
-    'ernie-4.5-turbo': 'qwen3.5-397b-a17b',
-    'ernie-4.0-turbo-8k': 'qwen3.5-397b-a17b',
-    'ernie-speed-128k': 'qwen3.5-397b-a17b',
-    'glm-5.2': 'qwen3.5-397b-a17b',
-    'glm-5.2-fast': 'qwen3.5-397b-a17b'
+    'ernie-4.5-turbo-vl': FREE_VL_MODEL,
+    'ernie-4.5-turbo-128k': FREE_TEXT_MODEL,
+    'ernie-4.5-turbo': FREE_TEXT_MODEL,
+    'ernie-4.0-turbo-8k': FREE_TEXT_MODEL,
+    'ernie-speed-128k': FREE_TEXT_MODEL,
+    'qwen3.5-122b-a10b': FREE_VL_MODEL,
+    'qwen3.5-397b-a17b': FREE_TEXT_MODEL,
+    'glm-5.2': FREE_TEXT_MODEL,
+    'glm-5.2-fast': FREE_TEXT_MODEL,
+    'glm-4.5v': FREE_VL_MODEL,
+    'glm-4v-flash': FREE_VL_MODEL,
+    'glm-4.1v-thinking-flash': FREE_VL_MODEL
   };
+
+  // 会按量计费（或已下线）的模型前缀：一旦命中，整体切到免费档
+  var PAID_MODEL_PREFIX = ['ernie-', 'qwen', 'glm-5', 'deepseek-'];
+  function isPaidModel(id){
+    if(!id) return false;
+    for(var i=0;i<PAID_MODEL_PREFIX.length;i++){
+      if(id.indexOf(PAID_MODEL_PREFIX[i]) === 0) return true;
+    }
+    return false;
+  }
 
   function loadConfig(){
     var cfg = {};
@@ -317,6 +345,24 @@ var DEFAULTS = {
     }catch(e){}
     var out = Object.assign({}, DEFAULTS, cfg);
     var changed = false;
+
+    // 一次性迁移：历史默认配置走的是千帆（按量计费），整体切到智谱免费档，
+    // 并清空旧 Key（旧 Key 属于收费平台，换平台后不通用）。
+    if(out.freePlan !== true &&
+       (out.provider === 'qianfan' || isPaidModel(out.vlModel) || isPaidModel(out.textModel))){
+      var fromQianfan = (out.provider === 'qianfan');
+      out.provider = FREE_PROVIDER;
+      out.baseUrl = FREE_BASE_URL;
+      out.vlModel = FREE_VL_MODEL;
+      out.textModel = FREE_TEXT_MODEL;
+      // 旧 Key 属于收费平台（千帆等），换平台后不通用，清掉；本来就是智谱 Key 则保留
+      if(fromQianfan){ out.apiKey = ''; }
+      out.freePlan = true;
+      out.migratedNotice = true;
+      out.migratedClearedKey = fromQianfan;
+      changed = true;
+    }
+
     if(out.vlModel && MODEL_MIGRATION[out.vlModel]){ out.vlModel = MODEL_MIGRATION[out.vlModel]; changed = true; }
     if(out.textModel && MODEL_MIGRATION[out.textModel]){ out.textModel = MODEL_MIGRATION[out.textModel]; changed = true; }
     if(changed){ try{ localStorage.setItem('storeReviewCfg', JSON.stringify(out)); }catch(e){} }
@@ -338,18 +384,45 @@ var DEFAULTS = {
       cfgBaseUrl = document.getElementById('cfgBaseUrl'),
       cfgApiKey = document.getElementById('cfgApiKey'),
       cfgVlModel = document.getElementById('cfgVlModel'),
-      cfgTextModel = document.getElementById('cfgTextModel'),
+cfgTextModel = document.getElementById('cfgTextModel'),
+      cfgCostHint = document.getElementById('cfgCostHint'),
       cfgStatus = document.getElementById('cfgStatus');
+
+  // 明确标出「免费 / 收费」，避免再次踩到按量计费的坑
+  function updateCostHint(){
+    if(!cfgCostHint) return;
+    var p = cfgProvider.value;
+    if(p === 'zhipu'){
+      cfgCostHint.style.color = '#5ad07a';
+      cfgCostHint.textContent = '✅ 免费档（智谱国际站 api.z.ai）：视觉 glm-4.6v-flash + 文本 glm-4.7-flash，官方价格页标注 Free，输入/输出/缓存全免。';
+    } else if(p === 'qianfan'){
+      cfgCostHint.style.color = '#ff7a7a';
+      cfgCostHint.textContent = '⚠️ 会花钱：千帆第三方模型（qwen / glm / deepseek 等）按量计费，用前先确认账户余额，欠费会被停服。';
+    } else {
+      cfgCostHint.style.color = '#ffb84d';
+      cfgCostHint.textContent = '⚠️ 计费未知：请自行确认该接口是否免费；产生费用与本人无关。';
+    }
+  }
 
   function openCfg(){
     var c = loadConfig();
-    cfgProvider.value = c.provider || 'qianfan';
+    cfgProvider.value = c.provider || FREE_PROVIDER;
     cfgBaseUrl.value = c.baseUrl || DEFAULTS.baseUrl;
     cfgApiKey.value = c.apiKey || '';
     cfgVlModel.value = c.vlModel || DEFAULTS.vlModel;
     cfgTextModel.value = c.textModel || DEFAULTS.textModel;
     cfgStatus.style.display = 'none';
     cfgStatus.className = 'cfg-status';
+    updateCostHint();
+    if(c.migratedNotice){
+      cfgStatus.textContent = c.migratedClearedKey
+        ? '已自动切到智谱免费档（glm-4.6v-flash / glm-4.7-flash）；原收费平台的旧 Key 已清空，请在下方填入智谱 API Key（免费申请，见下方提示）。'
+        : '已自动切到智谱免费档（glm-4.6v-flash / glm-4.7-flash），原有智谱 Key 保留不变。';
+      cfgStatus.className = 'cfg-status ok show';
+      c.migratedNotice = false;
+      c.migratedClearedKey = false;
+      try{ saveConfig(c); }catch(e){}
+    }
     cfgOverlay.classList.add('show');
   }
   function closeCfg(){ cfgOverlay.classList.remove('show'); }
@@ -358,21 +431,22 @@ var DEFAULTS = {
   cfgCancelBtn.addEventListener('click', closeCfg);
   cfgOverlay.addEventListener('click', function(e){ if(e.target===cfgOverlay) closeCfg(); });
 
-  cfgProvider.addEventListener('change', function(){
+cfgProvider.addEventListener('change', function(){
     var p = cfgProvider.value;
-if(p==='qianfan'){
+    if(p==='zhipu'){
+      cfgBaseUrl.value = FREE_BASE_URL;
+      cfgVlModel.value = FREE_VL_MODEL;
+      cfgTextModel.value = FREE_TEXT_MODEL;
+    } else if(p==='qianfan'){
       cfgBaseUrl.value = 'https://qianfan.baidubce.com/v2';
       cfgVlModel.value = 'qwen3.5-122b-a10b';
       cfgTextModel.value = 'qwen3.5-397b-a17b';
-    } else if(p==='zhipu'){
-      cfgBaseUrl.value = 'https://open.bigmodel.cn/api/paas/v4';
-      cfgVlModel.value = 'glm-4.5v';
-      cfgTextModel.value = 'glm-5.2';
     } else if(p==='openai'){
       cfgBaseUrl.value = 'https://api.openai.com/v1';
       cfgVlModel.value = 'gpt-4o';
       cfgTextModel.value = 'gpt-4o';
     }
+    updateCostHint();
   });
 
   cfgSaveBtn.addEventListener('click', function(){
@@ -442,7 +516,7 @@ if(p==='qianfan'){
       var cfg = {
         baseUrl: (cfgBaseUrl.value || saved.baseUrl || '').trim().replace(/\/$/,''),
         apiKey: (cfgApiKey.value || saved.apiKey || '').trim(),
-        textModel: (cfgTextModel.value || saved.textModel || 'qwen3.5-397b-a17b').trim()
+        textModel: (cfgTextModel.value || saved.textModel || FREE_TEXT_MODEL).trim()
       };
       var url = cfg.baseUrl + '/chat/completions';
       var testPayload = JSON.stringify({model: cfg.textModel, messages: [{role:'user',content:'hi'}], max_tokens: 5});
@@ -559,12 +633,17 @@ if(status === 400){
         return;
       }
       var url = cfg.baseUrl + '/chat/completions';
-      var payload = JSON.stringify({
+var body = {
         model: model,
         messages: messages,
         max_tokens: maxTokens || 800,
         temperature: 0.8
-      });
+      };
+      // 智谱 GLM 系列（含 glm-4.7-flash）默认开启 Thinking，思考内容会占用 max_tokens，
+      // 上限偏小时会导致正文为空或被截断，这里显式关闭；
+      // 只对智谱平台加该字段，避免其他 OpenAI 兼容接口拒绝未知参数。
+      if(cfg.provider === 'zhipu'){ body.thinking = { type: 'disabled' }; }
+      var payload = JSON.stringify(body);
       NET_DIAG = '';
 
       // 优先用 fetch（移动端更稳定），失败回退到 XHR
@@ -748,7 +827,7 @@ if(status === 400){
       {type:"image_url", image_url:{url:"data:image/jpeg;base64,"+b64}}
     ];
     var cfg = loadConfig();
-    return callAPI(cfg.vlModel || 'qwen3.5-122b-a10b', [{role:"user", content:content}], 1500, 180);
+    return callAPI(cfg.vlModel || FREE_VL_MODEL, [{role:"user", content:content}], 1500, 180);
   }
 
   function generateComment(facts, style, length){
@@ -777,7 +856,7 @@ if(status === 400){
       + "10. 不要出现\u201cAI\u201d\u201c模型\u201d等字样。\n"
       + "请直接输出评论正文。"
     );
-    return callAPI(cfg.textModel || 'qwen3.5-397b-a17b', [{role:"user", content:prompt}], 2500, 180);
+    return callAPI(cfg.textModel || FREE_TEXT_MODEL, [{role:"user", content:prompt}], 2500, 180);
   }
 
   // 合并校验+润色为一步，减少一次API调用
@@ -800,7 +879,7 @@ if(status === 400){
       + "从第二行开始输出最终评论正文。"
     );
     var cfg = loadConfig();
-    return callAPI(cfg.textModel || 'qwen3.5-397b-a17b', [{role:"user", content:prompt}], 2500, 180);
+    return callAPI(cfg.textModel || FREE_TEXT_MODEL, [{role:"user", content:prompt}], 2500, 180);
   }
 
   // ========== UI 交互（与原版本一致）==========

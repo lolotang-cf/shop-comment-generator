@@ -1,6 +1,6 @@
 /* 店铺评论生成小工具 - Service Worker
-   v3：新增欠费/403/5xx 错误的中文提示；沿用网络优先，保证更新后立刻拿到最新页面 */
-var CACHE_NAME = 'shop-comment-v3';
+   v4：默认切到智谱免费模型（glm-4.6v-flash / glm-4.7-flash）；沿用网络优先，保证更新后立刻拿到最新页面 */
+var CACHE_NAME = 'shop-comment-v4';
 var ASSETS = [
   './',
   './index.html',
