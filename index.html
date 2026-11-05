@@ -557,8 +557,9 @@
 
   // ========== 跨设备同步（Worker + KV）==========
   function syncUrl(){
-    var b = (chInputs(0).baseUrl.value||'').trim() || 'https://tokenhub-proxy.zifantx.top/ds';
-    try { return new URL(b).origin + '/sync'; } catch(e){ return 'https://tokenhub-proxy.zifantx.top/sync'; }
+    // 同步固定走你自己的 Worker 地址，不依赖任何通道配置，
+    // 避免第一个通道若填了第三方域名时把 /sync 发错地方导致 Failed to fetch
+    return 'https://tokenhub-proxy.zifantx.top/sync';
   }
   function syncStatus(msg, ok){
     var el = document.getElementById('syncStatus');
