@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>手机端诊断 v2 · 店铺评论工具</title>
+<title>手机端诊断 v3 · 店铺评论工具</title>
 <style>
   body{font-family:-apple-system,system-ui,"PingFang SC",sans-serif;background:#0f1115;color:#e6e6e6;margin:0;padding:16px;line-height:1.5}
   h2{font-size:17px;margin:18px 0 8px;color:#7fd1ff}
@@ -24,7 +24,7 @@
 <h2>② 选同一张店铺截图</h2>
 <div class="box">
   <input type="file" id="file" accept="image/*">
-  <div class="hint">选图后点「测试视觉」，会自动用 3 种尺寸（256/640/1200px）分别请求，定位是不是"图片太大"导致失败。文本测试会发小请求到 /ds 和 /v1。</div>
+  <div class="hint">选图后点「测试视觉」，会自动用 3 种尺寸（256/640/1200px）分别请求。文本测试会发小请求到 /ds 和 /v1。</div>
 </div>
 
 <button id="tVision">测试视觉（3 种尺寸自动对比）</button>
@@ -123,6 +123,35 @@ $('tVision').onclick=function(){
   chain.then(function(){log(acc+'\n=== 视觉测试完成，把上面这段发我 ===');});
 };
 
+// 探针：让 Worker 内部直接连上游（百炼/腾讯），回显真实状态/报错。
+// 决定性诊断：区分「Worker 连不上上游」与「响应被压坏 / 被 CPU 限制杀掉」。
+function doProbe(t, label, key){
+  var opts={method:'GET',mode:'cors'};
+  if(key){ opts.headers={'Authorization':'Bearer '+key}; }
+  return fetch('https://tokenhub-proxy.zifanx.top/probe?t='+t, opts)
+    .then(function(r){return r.text().then(function(txt){return {s:r.status,txt:txt};});})
+    .then(function(o){
+      var info; try{ info=JSON.parse(o.txt);}catch(e){info={raw:o.txt};}
+      if(info.ok){
+        return '【'+label+'】上游可达\n  target='+info.target+'\n  HTTP '+info.status+'  耗时 '+info.elapsedMs+'ms  字节 '+info.len+'\n  响应头200字节预览：'+info.head+'\n';
+      } else {
+        return '【'+label+'】上游调用失败\n  target='+info.target+'\n  错误='+info.error+'  耗时 '+info.elapsedMs+'ms\n';
+      }
+    })
+    .catch(function(e){
+      return '【'+label+'】探针本身失败 '+e.name+' - '+e.message+'  （HTTP 0 / Load failed = Worker 执行被 Kill，典型 10ms CPU 限制）\n';
+    });
+}
+$('tProbe').onclick=function(){
+  var chs=cfgChannels();
+  var dsKey='', v1Key='';
+  chs.forEach(function(c){ if(c.baseUrl && c.baseUrl.indexOf('/ds')>=0){dsKey=c.apiKey||'';} if(c.baseUrl && c.baseUrl.indexOf('/v1')>=0){v1Key=c.apiKey||'';} });
+  log('开始探针测试（让 Worker 直连百炼/腾讯，判断是上游问题还是 Worker 限制）…\n');
+  var acc='';
+  doProbe('ds','百炼 qwen-max', dsKey).then(function(r){acc+=r+'\n';log(acc);return doProbe('v1','腾讯 hy3', v1Key);})
+  .then(function(r){acc+=r+'\n';log(acc+'\n=== 探针完成，把上面这段发我 ===');});
+};
+
 $('tText').onclick=function(){
   var chs=cfgChannels(); var tx=active(chs,'text');
   if(!tx.length){log('没有可用的文本通道','err');return;}
@@ -144,30 +173,6 @@ $('tText').onclick=function(){
   chain.then(function(){
     log('文本通道测试结果：\n\n'+results.join('\n')+'\n=== 文本测试完成，把上面这段发我 ===');
   });
-};
-
-// 探针：让 Worker 内部直接连上游（百炼/腾讯），回显真实状态/报错。
-// 这是决定性诊断：能区分「Worker 连不上上游」与「响应被压坏」。
-function doProbe(t, label){
-  return fetch('https://tokenhub-proxy.zifantx.top/probe?t='+t,{method:'GET',mode:'cors'})
-    .then(function(r){return r.text().then(function(txt){return {s:r.status,txt:txt};});})
-    .then(function(o){
-      var info; try{ info=JSON.parse(o.txt);}catch(e){info={raw:o.txt};}
-      if(info.ok){
-        return '【'+label+'】✅ 上游可达\n  target='+info.target+'\n  HTTP '+info.status+'  耗时 '+info.elapsedMs+'ms  字节 '+info.len+'\n  响应头200字节预览：'+info.head+'\n';
-      } else {
-        return '【'+label+'】❌ 上游调用失败\n  target='+info.target+'\n  错误='+info.error+'  耗时 '+info.elapsedMs+'ms\n';
-      }
-    })
-    .catch(function(e){
-      return '【'+label+'】❌ 探针本身失败 '+e.name+' - '+e.message+'  （HTTP 0 / Load failed = Worker 执行被 Kill，典型 10ms CPU 限制）\n';
-    });
-}
-$('tProbe').onclick=function(){
-  log('开始探针测试（让 Worker 直连百炼/腾讯，判断是上游问题还是 Worker 限制）…\n');
-  var acc='';
-  doProbe('ds','百炼 qwen-max').then(function(r){acc+=r+'\n';log(acc);return doProbe('v1','腾讯 hy3');})
-  .then(function(r){acc+=r+'\n';log(acc+'\n=== 探针完成，把上面这段发我 ===');});
 };
 </script>
 </body>
