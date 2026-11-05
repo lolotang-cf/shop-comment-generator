@@ -333,6 +333,24 @@
       配置仅保存在本机浏览器 localStorage，不上传任何服务器。<br>
       想再加通道 3？复制「通道 2」的 HTML 区块并把 data-ch="1" 改成 "2" 即可（脚本已支持任意数量通道）。
     </div>
+
+    <!-- 跨设备同步 -->
+    <div class="ch-block" style="border-color:#3b5bff">
+      <div class="ch-title">🔄 跨设备同步（云端）<span class="sub">—— 用你自己的 Cloudflare Worker + KV，不经由任何第三方</span></div>
+      <div class="cfg-hint" style="margin-bottom:8px">
+        在同一台设备上「上传」当前配置，另一台设备填<b>相同的同步码</b>后「下载」即可自动同步。<br>
+        同步码相当于你的私密房间号，自己起一个（如 <code>myreview2026</code>），两台设备保持一致。
+      </div>
+      <div class="cfg-row">
+        <label>同步码（两台设备填一样）</label>
+        <input type="text" id="syncCode" placeholder="例如 myreview2026" style="max-width:280px">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+        <button id="syncUpBtn" style="background:#3b5bff;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer">⬆️ 上传当前配置</button>
+        <button id="syncDownBtn" style="background:#2a3158;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-size:13px;cursor:pointer">⬇️ 下载并应用</button>
+      </div>
+      <div id="syncStatus" style="font-size:12px;margin-top:8px;color:#8a93b8"></div>
+    </div>
   </div>
 </div>
 
@@ -534,6 +552,72 @@
             +'\n\n用法：含 image 的模型填「视觉模型」，纯 text 的填「文本模型」。';
         })
         .catch(function(e){ diagResult.textContent='请求失败：'+e.message+'（若为 Failed to fetch，属跨域或网络问题）'; });
+    });
+  }
+
+  // ========== 跨设备同步（Worker + KV）==========
+  function syncUrl(){
+    var b = (chInputs(0).baseUrl.value||'').trim() || 'https://tokenhub-proxy.zifantx.top/ds';
+    try { return new URL(b).origin + '/sync'; } catch(e){ return 'https://tokenhub-proxy.zifantx.top/sync'; }
+  }
+  function syncStatus(msg, ok){
+    var el = document.getElementById('syncStatus');
+    if(!el) return;
+    el.textContent = msg;
+    el.style.color = (ok===true) ? '#5ad07a' : (ok===false ? '#ff6b6b' : '#8a93b8');
+  }
+  function applyCfgToInputs(cfg){
+    for(var i=0;i<cfg.channels.length;i++){
+      var inp = chInputs(i); if(!inp.provider) continue;
+      var ch = cfg.channels[i];
+      inp.provider.value = ch.provider || 'custom';
+      inp.baseUrl.value = ch.baseUrl||'';
+      inp.apiKey.value = ch.apiKey||'';
+      inp.vlModel.value = ch.vlModel||'';
+      inp.textModel.value = ch.textModel||'';
+      if(inp.enabled) inp.enabled.checked = (ch.enabled !== false);
+    }
+  }
+  var syncUpBtn = document.getElementById('syncUpBtn');
+  if(syncUpBtn){
+    syncUpBtn.addEventListener('click', function(){
+      var code = (document.getElementById('syncCode').value||'').trim();
+      if(!code){ syncStatus('请先填写同步码', false); return; }
+      var cfg = readRaw();
+      if(!cfg || !cfg.channels || !cfg.channels.length){ syncStatus('本地还没有配置，先点「保存配置」一次再上传', false); return; }
+      syncStatus('上传中…');
+      fetch(syncUrl(), {method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({code:code, config:cfg}), mode:'cors'})
+        .then(function(r){ return r.json().then(function(j){ return {s:r.status,j:j}; }); })
+        .then(function(o){
+          if(o.s===200 && o.j && o.j.ok){ syncStatus('✅ 已上传到云端，另一台设备填相同同步码即可下载', true); }
+          else if(o.s===500 && o.j && o.j.error==='sync_not_configured'){ syncStatus('❌ Worker 未绑定 CONFIG_KV，请先按说明给 Worker 建 KV', false); }
+          else { syncStatus('❌ 上传失败 HTTP '+o.s+'：'+(o.j&&o.j.message||''), false); }
+        })
+        .catch(function(e){ syncStatus('❌ 网络/CORS 错误：'+e.message, false); });
+    });
+  }
+  var syncDownBtn = document.getElementById('syncDownBtn');
+  if(syncDownBtn){
+    syncDownBtn.addEventListener('click', function(){
+      var code = (document.getElementById('syncCode').value||'').trim();
+      if(!code){ syncStatus('请先填写同步码', false); return; }
+      syncStatus('下载中…');
+      fetch(syncUrl()+'?code='+encodeURIComponent(code), {method:'GET', mode:'cors'})
+        .then(function(r){ return r.text().then(function(t){ return {s:r.status,t:t}; }); })
+        .then(function(o){
+          if(o.s===404){ syncStatus('❌ 云端没有该同步码的配置，请先在另一台设备「上传当前配置」', false); return; }
+          if(o.s!==200){ syncStatus('❌ 下载失败 HTTP '+o.s, false); return; }
+          try{
+            var cfg = JSON.parse(o.t);
+            if(!cfg.channels) throw new Error('格式不对');
+            cfg.channels.forEach(fixChannel);
+            saveConfig(cfg); config = cfg;
+            applyCfgToInputs(config);
+            syncStatus('✅ 已下载并填入，点「保存配置」生效（或关闭弹窗直接用）', true);
+          }catch(e){ syncStatus('❌ 解析失败：'+e.message, false); }
+        })
+        .catch(function(e){ syncStatus('❌ 网络/CORS 错误：'+e.message, false); });
     });
   }
 
