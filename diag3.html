@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>手机端诊断 · 店铺评论工具</title>
+<style>
+  body{font-family:-apple-system,system-ui,"PingFang SC",sans-serif;background:#0f1115;color:#e6e6e6;margin:0;padding:16px;line-height:1.5}
+  h2{font-size:17px;margin:18px 0 8px;color:#7fd1ff}
+  .box{background:#1a1d24;border:1px solid #2a2f3a;border-radius:10px;padding:12px;margin:8px 0}
+  button{display:block;width:100%;margin:8px 0;padding:14px;font-size:16px;border:0;border-radius:10px;background:#2b6cff;color:#fff;font-weight:600}
+  button.sec{background:#3a3f4b}
+  input[type=file]{width:100%;margin:8px 0;color:#aaa}
+  pre{white-space:pre-wrap;word-break:break-all;background:#000;color:#9fe6a0;padding:10px;border-radius:8px;font-size:12px;max-height:300px;overflow:auto}
+  .err{color:#ff8a8a}
+  .ok{color:#9fe6a0}
+  .hint{color:#9aa4b2;font-size:13px}
+</style>
+</head>
+<body>
+<h2>① 本机已同步的配置（来自 localStorage）</h2>
+<div class="box"><pre id="cfg">读取中…</pre></div>
+
+<h2>② 选同一张店铺截图</h2>
+<div class="box">
+  <input type="file" id="file" accept="image/*">
+  <div class="hint">选图后下面两个测试会用它。图片会自动缩到 1200px。</div>
+</div>
+
+<button id="tVision">测试视觉（发送截图给视觉模型）</button>
+<button id="tText" class="sec">测试文本（/ds + /v1 各发一次小请求）</button>
+
+<h2>③ 结果</h2>
+<div class="box"><pre id="out">点上面按钮开始…</pre></div>
+
+<script>
+function $(id){return document.getElementById(id);}
+function log(s,cls){var o=$('out');o.className=cls||'';o.textContent=String(s);}
+function readCfg(){
+  try{
+    var raw=localStorage.getItem('storeReviewCfg');
+    if(!raw) return {ok:false,msg:'没有 storeReviewCfg（手机上还没保存过配置）'};
+    var c=JSON.parse(raw);
+    var ch=(c.channels||[]).map(function(x,i){
+      return '通道'+(i+1)+': provider='+x.provider+' baseUrl='+x.baseUrl+' keyLen='+(x.apiKey?x.apiKey.length:0)+' vlModel='+x.vlModel+' textModel='+x.textModel;
+    }).join('\n');
+    return {ok:true,text:ch};
+  }catch(e){return {ok:false,msg:'读取失败：'+e.message};}
+}
+(function(){
+  var r=readCfg();
+  $('cfg').textContent = r.ok ? r.text : ('⚠️ '+r.msg);
+})();
+
+function resize(file,cb){
+  var fr=new FileReader();
+  fr.onload=function(e){
+    var img=new Image();
+    img.onload=function(){
+      var w=img.width,h=img.height,mw=1200,mh=1200;
+      if(w>mw||h>mh){var r=Math.min(mw/w,mh/h);w=Math.floor(w*r);h=Math.floor(h*r);}
+      var cv=document.createElement('canvas');cv.width=w;cv.height=h;
+      cv.getContext('2d').drawImage(img,0,0,w,h);
+      cb(cv.toDataURL('image/jpeg',0.85).split(',')[1]);
+    };
+    img.src=e.target.result;
+  };
+  fr.readAsDataURL(file);
+}
+
+function cfgChannels(){
+  var c=JSON.parse(localStorage.getItem('storeReviewCfg')||'{}');
+  return c.channels||[];
+}
+function active(ch,role){
+  return ch.filter(function(x){
+    if(x.enabled===false) return false;
+    if(!x.apiKey||!x.baseUrl) return false;
+    if(role==='vl'&&!x.vlModel) return false;
+    if(role==='text'&&!x.textModel) return false;
+    return true;
+  });
+}
+
+$('tVision').onclick=function(){
+  var f=$('file').files[0];
+  if(!f){log('请先选一张店铺截图','err');return;}
+  var chs=cfgChannels(); var vl=active(chs,'vl')[0];
+  if(!vl){log('没有可用的视觉通道（需 baseUrl+Key+视觉模型）','err');return;}
+  log('发送视觉请求到：'+vl.baseUrl+'/chat/completions\n模型：'+vl.vlModel+'\n（图片上传中…）');
+  resize(f,function(b64){
+    var payload=JSON.stringify({
+      model:vl.vlModel,
+      messages:[{role:'user',content:[
+        {type:'text',text:'请提取这张店铺截图的：店名、品类、评分、人均、地址、营业时间、招牌菜、优惠。看不到的写未见。分点列出。'},
+        {type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}}
+      ]}],
+      max_tokens:1500
+    });
+    var t0=Date.now();
+    fetch(vl.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+vl.apiKey},body:payload,mode:'cors'})
+      .then(function(r){return r.text().then(function(t){return {s:r.status,t:t};});})
+      .then(function(o){
+        log('视觉请求耗时 '+(Date.now()-t0)+'ms\nHTTP '+o.s+'\n\n--- 模型原始返回 ---\n'+o.t.slice(0,2000));
+      })
+      .catch(function(e){
+        log('视觉请求失败：'+e.name+' - '+e.message+'\n（TypeError=网络/CORS 被拦；请按 F12 看 Console 红色报错）','err');
+      });
+  });
+};
+
+$('tText').onclick=function(){
+  var chs=cfgChannels(); var tx=active(chs,'text');
+  if(!tx.length){log('没有可用的文本通道','err');return;}
+  var results=[];
+  function testOne(ch,idx){
+    var payload=JSON.stringify({model:ch.textModel,messages:[{role:'user',content:'hi'}],max_tokens:10});
+    var t0=Date.now();
+    return fetch(ch.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+ch.apiKey},body:payload,mode:'cors'})
+      .then(function(r){return r.text().then(function(t){return {s:r.status,t:t};});})
+      .then(function(o){
+        results.push('通道'+(idx+1)+' ['+ch.baseUrl+' 模型 '+ch.textModel+']\n  HTTP '+o.s+'  耗时 '+(Date.now()-t0)+'ms\n  '+o.t.slice(0,400)+'\n');
+      })
+      .catch(function(e){
+        results.push('通道'+(idx+1)+' ['+ch.baseUrl+']\n  失败: '+e.name+' - '+e.message+'  （HTTP 0 / TypeError = 网络或CORS）\n');
+      });
+  }
+  var chain=Promise.resolve();
+  tx.forEach(function(ch,i){ chain=chain.then(function(){return testOne(ch,i);}); });
+  chain.then(function(){
+    log('文本通道测试结果：\n\n'+results.join('\n'));
+  });
+};
+</script>
+</body>
+</html>
