@@ -375,6 +375,24 @@
     'glm-4v-flash':'glm-4.6v-flash', 'glm-4.1v-thinking-flash':'glm-4.6v-flash'
   };
 
+  // 代理 Worker 的唯一正确域名（其它拼写均无法解析，实测 000）
+  var PROXY_HOST = 'https://tokenhub-proxy.zifantx.top';
+  // 百炼实测：以下视觉模型 ID 均 404(Model not exist) 或 403(Access denied)，
+  // 唯一可用且能正确读图的是 qwen3-vl-plus。旧配置自动迁移，避免「未返回正文内容」。
+  var DASHSCOPE_BAD_VL = {
+    'qwen-vl-max':'qwen3-vl-plus', 'qwen-vl-max-latest':'qwen3-vl-plus',
+    'qwen-vl-plus':'qwen3-vl-plus', 'qwen-vl-plus-latest':'qwen3-vl-plus',
+    'qwen2.5-vl-7b-instruct':'qwen3-vl-plus', 'qwen2.5-vl-32b-instruct':'qwen3-vl-plus',
+    'qwen2.5-vl-72b-instruct':'qwen3-vl-plus', 'qwen3-vl-flash':'qwen3-vl-plus',
+    'qwen3-vl-8b-instruct':'qwen3-vl-plus', 'qwen3-vl-235b-a22b-instruct':'qwen3-vl-plus'
+  };
+  // 纯文本模型被误填进「视觉模型」字段时置空，避免故障转移拿它去读图
+  // （例如腾讯 TokenHub 免费档只有 hy3 文本模型，没有视觉能力）
+  var TEXT_ONLY_MODELS = {
+    'hy3':1, 'qwen-max':1, 'qwen-plus':1, 'qwen-turbo':1,
+    'glm-4.7-flash':1, 'glm-4-flash':1, 'deepseek-v3':1
+  };
+
   var LS_KEY = 'storeReviewCfg';
 
   function readRaw(){
@@ -406,6 +424,38 @@
     if(typeof ch.enabled !== 'boolean') ch.enabled = true;
     if(MODEL_MIGRATION[ch.vlModel]) ch.vlModel = MODEL_MIGRATION[ch.vlModel];
     if(MODEL_MIGRATION[ch.textModel]) ch.textModel = MODEL_MIGRATION[ch.textModel];
+
+    // ① 纠正代理域名拼写：历史配置里出现过 zifanx / zifangx 等错拼，
+    //    这些域名 DNS 都解析不到（实测 000），统一改成唯一可用的 zifantx.top。
+    //    只处理我们自己的代理域名，不影响智谱/硅基等第三方地址。
+    if(/tokenhub-proxy\./i.test(ch.baseUrl||'')){
+      ch.baseUrl = String(ch.baseUrl).replace(
+        /https?:\/\/tokenhub-proxy\.[^/\s]+/i,
+        PROXY_HOST
+      );
+    }
+    // ② 百炼 /ds 通道：把实测不存在/无权限的视觉模型 ID 自动换成可用的 qwen3-vl-plus
+    if(/\/(ds)(\/|$)/i.test(ch.baseUrl||'') && DASHSCOPE_BAD_VL[ch.vlModel]){
+      ch.vlModel = DASHSCOPE_BAD_VL[ch.vlModel];
+    }
+    // ③ 纯文本模型误填在视觉字段 -> 置空，让它不参与「视觉」故障转移
+    //    （置空后该通道仍可作文本备用，不影响评论生成）
+    if(ch.vlModel && TEXT_ONLY_MODELS[ch.vlModel]) ch.vlModel = '';
+  }
+
+  // 从模型返回里稳健提取正文：兼容 reasoning_content / 数组型 content
+  function pickContent(d){
+    try{
+      var m = (d && d.choices && d.choices[0] && d.choices[0].message) || {};
+      var c = m.content;
+      if(Array.isArray(c)){
+        c = c.map(function(p){ return (p && (p.text || p.value)) || ''; }).join('');
+      }
+      if(typeof c === 'string' && c.trim()) return c;
+      var r = m.reasoning_content || m.reasoning || d.reasoning_content;
+      if(typeof r === 'string' && r.trim()) return r;
+      return '';
+    }catch(e){ return ''; }
   }
 
   function migrateOld(old){
@@ -720,8 +770,8 @@
           if(xhr.readyState!==4) return;
           if(xhr.status>=200&&xhr.status<300){
             try{ var d=JSON.parse(xhr.responseText);
-              var c=(d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content)||'';
-              if(!c||!c.trim()){ reject(new Error('AI 未返回正文内容，请重试或换通道')); }
+              var c=pickContent(d);
+              if(!c||!c.trim()){ reject(new Error('AI 未返回正文内容（模型 '+(model||'')+' 返回无 choices.content），请重试或换通道')); }
               else resolve(c);
             }catch(e){ reject(new Error('接口返回解析失败')); }
           } else {
@@ -746,8 +796,8 @@
           return resp.text().then(function(t){ var e=new Error(friendlyApiError(resp.status,t,model)); e.status=resp.status; throw e; });
         })
         .then(function(data){
-          var c=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content)||'';
-          if(!c||!c.trim()){ reject(new Error('AI 未返回正文内容，请重试或换通道')); }
+          var c=pickContent(data);
+          if(!c||!c.trim()){ reject(new Error('AI 未返回正文内容（模型 '+(model||'')+' 返回无 choices.content），请重试或换通道')); }
           else resolve(c);
         })
         .catch(function(err){
