@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>诊断页 v4 · 复刻真实请求</title>
+<style>
+  body{font-family:-apple-system,system-ui,sans-serif;max-width:760px;margin:0 auto;padding:16px;background:#0f1419;color:#e6e6e6}
+  h2{font-size:16px;border-left:4px solid #2f81f7;padding-left:8px}
+  .box{border:1px solid #2a2f36;border-radius:8px;padding:12px;margin:10px 0;white-space:pre-wrap;word-break:break-all;font-size:12px;background:#161b22;max-height:340px;overflow:auto}
+  button{display:block;width:100%;padding:12px;margin:8px 0;border:0;border-radius:8px;background:#2f81f7;color:#fff;font-size:15px}
+  button.sec{background:#30363d}
+  input[type=file]{width:100%;margin:8px 0}
+  .ok{color:#3fb950}.err{color:#f85149}.dim{color:#8b949e}
+</style>
+</head>
+<body>
+<h2>诊断页 v4 · 复刻工具真实请求（用你手机同步的配置）</h2>
+<div id="cfg" class="box">正在读取本机配置…</div>
+
+<input type="file" id="f" accept="image/*">
+<button id="tVl">① 复刻视觉请求（qwen-vl-max 带图）</button>
+<button id="tTx" class="sec">② 复刻文本请求（qwen-max）</button>
+<button id="tVlSmall" class="sec">③ 视觉极简测试（图+一句话）</button>
+
+<div id="out" class="box dim">结果会显示在这里…</div>
+
+<script>
+function cfgChannels(){
+  try{ var c=JSON.parse(localStorage.getItem('storeReviewCfg')||'{}'); return c.channels||[]; }
+  catch(e){ return []; }
+}
+function active(chs, role){
+  return chs.filter(function(c){
+    if(!c.enabled) return false;
+    if(role==='vl') return !!(c.vlModel&&c.apiKey&&c.baseUrl);
+    if(role==='text') return !!(c.textModel&&c.apiKey&&c.baseUrl);
+    return false;
+  });
+}
+function show(t,cls){ var o=document.getElementById('out'); o.className='box '+(cls||''); o.textContent=t; }
+function dump(label, status, headers, json){
+  var h=''; try{ for(var k of headers.keys()){ h+=k+': '+headers.get(k)+'\n'; } }catch(e){}
+  show(label+'\nHTTP '+status+'\n\n[响应头]\n'+h+'\n[响应体]\n'+json, status>=200&&status<300?'ok':'err');
+}
+window.addEventListener('load',function(){
+  var chs=cfgChannels();
+  var txt=chs.map(function(c,i){
+    return '通道'+(i+1)+': provider='+(c.provider||'?')+'\n  baseUrl='+(c.baseUrl||'?')+'\n  vlModel='+(c.vlModel||'-')+'\n  textModel='+(c.textModel||'-')+'\n  key='+(c.apiKey?(c.apiKey.length+'位'):'(空)')+'\n  enabled='+(c.enabled!==false);
+  }).join('\n\n');
+  document.getElementById('cfg').textContent='【本机已同步配置】\n\n'+(txt||'(无，请先在工具里配置并同步)');
+
+  function resize(file, cb){
+    var r=new FileReader(); r.onload=function(e){ var img=new Image(); img.onload=function(){
+      var w=img.width,h=img.height,mw=720,mh=720; if(w>mw||h>mh){var r=Math.min(mw/w,mh/h);w=Math.floor(w*r);h=Math.floor(h*r);}
+      var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+      cb(cv.toDataURL('image/jpeg',0.6).split(',')[1]);
+    }; img.src=e.target.result; }; r.readAsDataURL(file);
+  }
+
+  document.getElementById('tVl').onclick=function(){
+    var vl=active(cfgChannels(),'vl'); if(!vl.length){show('没有启用的视觉通道','err');return;}
+    var c=vl[0]; var f=document.getElementById('f').files[0];
+    if(!f){show('请先选一张店铺截图','err');return;}
+    resize(f,function(b64){
+      var prompt='你是一名细心的店铺信息提取助手。请仔细观察这张店铺截图，提取其中真实可见的信息（店铺名称、品类、评分、人均、招牌菜等）。看不到的写未见。分点输出。';
+      var body={model:c.vlModel, messages:[{role:'user',content:[{type:'text',text:prompt},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}}]}], max_tokens:1500, temperature:0.8};
+      show('发送视觉请求 → '+c.baseUrl+'/chat/completions 模型 '+c.vlModel+' …');
+      var t0=Date.now();
+      fetch(c.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey},body:JSON.stringify(body),mode:'cors'})
+        .then(function(r){return r.text().then(function(t){return {s:r.status,h:r.headers,t:t,ms:Date.now()-t0};});})
+        .then(function(o){dump('① 视觉请求（'+c.vlModel+'） 耗时'+o.ms+'ms', o.s, o.h, o.t);})
+        .catch(function(e){show('① 视觉请求失败: '+e.name+' - '+e.message+'（HTTP 0 / Load failed = 网络/CORS）','err');});
+    });
+  };
+
+  document.getElementById('tTx').onclick=function(){
+    var tx=active(cfgChannels(),'text'); if(!tx.length){show('没有启用的文本通道','err');return;}
+    var c=tx[0];
+    var prompt='你是一名真实用户，不是AI。请写一条关于某餐厅的简短真实评论，100字左右，客观真实，不要出现AI字样。';
+    var body={model:c.textModel, messages:[{role:'user',content:prompt}], max_tokens:2500, temperature:0.8};
+    show('发送文本请求 → '+c.baseUrl+'/chat/completions 模型 '+c.textModel+' …');
+    var t0=Date.now();
+    fetch(c.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey},body:JSON.stringify(body),mode:'cors'})
+      .then(function(r){return r.text().then(function(t){return {s:r.status,h:r.headers,t:t,ms:Date.now()-t0};});})
+      .then(function(o){dump('② 文本请求（'+c.textModel+'） 耗时'+o.ms+'ms', o.s, o.h, o.t);})
+      .catch(function(e){show('② 文本请求失败: '+e.name+' - '+e.message+'（HTTP 0 / Load failed = 网络/CORS）','err');});
+  };
+
+  document.getElementById('tVlSmall').onclick=function(){
+    var vl=active(cfgChannels(),'vl'); if(!vl.length){show('没有启用的视觉通道','err');return;}
+    var c=vl[0]; var f=document.getElementById('f').files[0];
+    if(!f){show('请先选一张店铺截图','err');return;}
+    resize(f,function(b64){
+      var body={model:c.vlModel, messages:[{role:'user',content:[{type:'text',text:'图里是什么店？一句话回答。'},{type:'image_url',image_url:{url:'data:image/jpeg;base64,'+b64}}]}], max_tokens:300, temperature:0.8};
+      show('发送视觉极简请求 → 模型 '+c.vlModel+' …');
+      var t0=Date.now();
+      fetch(c.baseUrl+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+c.apiKey},body:JSON.stringify(body),mode:'cors'})
+        .then(function(r){return r.text().then(function(t){return {s:r.status,h:r.headers,t:t,ms:Date.now()-t0};});})
+        .then(function(o){dump('③ 视觉极简（'+c.vlModel+'） 耗时'+o.ms+'ms', o.s, o.h, o.t);})
+        .catch(function(e){show('③ 视觉极简失败: '+e.name+' - '+e.message,'err');});
+    });
+  };
+});
+</script>
+</body>
+</html>
